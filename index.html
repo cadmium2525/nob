@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Research Data Lab</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+JP:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .glass-card {
+            @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl;
+        }
+
+        .input-focus {
+            @apply focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 outline-none;
+        }
+
+        /* カスタムスクロールバー */
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }
+
+        /* モバイルでの入力しやすさ向上 */
+        input[type="text"] {
+            font-size: 16px !important; /* iOSのズーム防止 */
+        }
+    </style>
+</head>
+<body class="bg-[#f8fafc] text-slate-900 min-h-screen pb-12">
+    <!-- ナビゲーション -->
+    <nav class="sticky top-0 z-50 bg-white/70 backdrop-blur-lg border-b border-slate-200 mb-6">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">R</div>
+                <span class="font-bold text-lg tracking-tight hidden sm:block">Research Data Lab</span>
+            </div>
+            <div class="flex items-center gap-4">
+                <span id="save-status" class="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-1 rounded-full opacity-0 transition-opacity uppercase">SAVED</span>
+                <button onclick="clearStorage()" class="p-2 text-slate-400 hover:text-rose-500 transition-colors" title="全データ抹消">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 space-y-6">
+        
+        <!-- 統計概要 -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">収束最大地点</p>
+                <p id="stat-narrowest" class="text-lg font-bold text-blue-600">-</p>
+            </div>
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">最終予測値 (X=36)</p>
+                <p id="stat-final-predict" class="text-lg font-bold text-emerald-600">-</p>
+            </div>
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 hidden lg:block">
+                <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">入力済みデータ数</p>
+                <p id="stat-count" class="text-lg font-bold text-slate-800">0 / 36</p>
+            </div>
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 hidden lg:block">
+                <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">ステータス</p>
+                <p id="stat-analysis-status" class="text-lg font-bold text-slate-800">Standby</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            <!-- グラフ -->
+            <div class="lg:col-span-7 lg:order-2">
+                <div class="bg-white p-4 sm:p-6 rounded-3xl shadow-sm border border-slate-200 sticky top-24">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="font-bold text-slate-800">Trend Analysis</h2>
+                        <div class="flex gap-2 text-[10px]">
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-500"></span>Range</span>
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-rose-500"></span>Trend</span>
+                        </div>
+                    </div>
+                    <div class="h-[300px] sm:h-[400px]">
+                        <canvas id="mainChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- テーブル入力 -->
+            <div class="lg:col-span-5 lg:order-1 space-y-4">
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-4 border-b border-slate-100 bg-slate-50/50">
+                        <div class="flex justify-between items-center mb-1">
+                            <h2 class="font-bold text-slate-800">Input Data</h2>
+                            <span class="text-[10px] text-slate-400 font-mono tracking-widest uppercase">X: 01-36</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400">※複数条件はカンマ「,」で区切って入力</p>
+                    </div>
+                    
+                    <div class="overflow-y-auto max-h-[600px] custom-scroll">
+                        <table class="w-full">
+                            <thead class="bg-white sticky top-0 z-10">
+                                <tr class="text-[10px] text-slate-400 uppercase tracking-wider">
+                                    <th class="py-3 px-4 text-center">X</th>
+                                    <th class="py-3 px-2 text-left">Records (min1, min2... / max1, max2...)</th>
+                                    <th class="py-3 px-4 text-center">Width</th>
+                                </tr>
+                            </thead>
+                            <tbody id="data-table-body" class="divide-y divide-slate-50">
+                                <!-- JSで生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        let chart;
+        const totalX = 36;
+        const STORAGE_KEY = 'RESEARCH_DATA_STORE_V2';
+        
+        const defaultData = {
+            2: { mins: [13], maxs: [29] },
+            5: { mins: [31], maxs: [43] },
+            10: { mins: [53], maxs: [64] },
+            12: { mins: [73], maxs: [77] },
+            15: { mins: [86], maxs: [91] },
+            17: { mins: [99], maxs: [102] },
+            19: { mins: [109], maxs: [109] },
+            20: { mins: [110], maxs: [111] },
+            21: { mins: [108], maxs: [113] },
+            22: { mins: [112], maxs: [117] },
+            24: { mins: [118], maxs: [119] },
+            25: { mins: [118], maxs: [119] },
+            27: { mins: [122], maxs: [123] },
+            30: { mins: [132], maxs: [135] }
+        };
+
+        let currentData = {};
+
+        function loadData() {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            currentData = stored ? JSON.parse(stored) : JSON.parse(JSON.stringify(defaultData));
+        }
+
+        function saveData() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
+            const status = document.getElementById('save-status');
+            status.classList.remove('opacity-0');
+            setTimeout(() => { status.classList.add('opacity-0'); }, 1500);
+        }
+
+        function clearStorage() {
+            if (confirm('全てのデータをリセットしますか？')) {
+                localStorage.removeItem(STORAGE_KEY);
+                location.reload();
+            }
+        }
+
+        function initTable() {
+            const body = document.getElementById('data-table-body');
+            for (let x = 1; x <= totalX; x++) {
+                const row = document.createElement('tr');
+                const d = currentData[x] || { mins: [], maxs: [] };
+                
+                row.className = "group hover:bg-slate-50 transition-colors";
+                row.innerHTML = `
+                    <td class="py-4 px-4 text-center">
+                        <span class="text-xs font-bold text-slate-400 group-hover:text-blue-500 transition-colors">${x.toString().padStart(2, '0')}</span>
+                    </td>
+                    <td class="py-2 px-2">
+                        <div class="flex flex-col gap-1">
+                            <input type="text" class="input-cell text-[12px] h-8 px-2 bg-slate-50 border-transparent input-focus" id="min-${x}" value="${d.mins.join(',')}" placeholder="MIN群 (例: 10,12,11)" oninput="updateData(${x})">
+                            <input type="text" class="input-cell text-[12px] h-8 px-2 bg-slate-50 border-transparent input-focus" id="max-${x}" value="${d.maxs.join(',')}" placeholder="MAX群 (例: 20,18,19)" oninput="updateData(${x})">
+                        </div>
+                    </td>
+                    <td class="py-4 px-4 text-center">
+                        <span id="range-${x}" class="text-[11px] font-mono font-bold text-slate-300">-</span>
+                    </td>
+                `;
+                body.appendChild(row);
+                calculateRefined(x);
+            }
+        }
+
+        function calculateRefined(x) {
+            const minStr = document.getElementById(`min-${x}`).value;
+            const maxStr = document.getElementById(`max-${x}`).value;
+            
+            const mins = minStr.split(',').map(v => v.trim()).filter(v => v !== '').map(v => parseFloat(v)).filter(v => !isNaN(v));
+            const maxs = maxStr.split(',').map(v => v.trim()).filter(v => v !== '').map(v => parseFloat(v)).filter(v => !isNaN(v));
+
+            currentData[x] = { mins, maxs };
+
+            const refinedMin = mins.length > 0 ? Math.max(...mins) : null;
+            const refinedMax = maxs.length > 0 ? Math.min(...maxs) : null;
+            
+            const rangeEl = document.getElementById(`range-${x}`);
+            if (refinedMin !== null && refinedMax !== null) {
+                const range = (refinedMax - refinedMin).toFixed(1);
+                rangeEl.innerText = range;
+                rangeEl.className = `text-[11px] font-mono font-bold ${range <= 0 ? 'text-emerald-500' : 'text-slate-400'}`;
+            } else {
+                rangeEl.innerText = '-';
+                rangeEl.className = "text-[11px] font-mono font-bold text-slate-200";
+            }
+            return { x, min: refinedMin, max: refinedMax };
+        }
+
+        function updateData(x) {
+            calculateRefined(x);
+            saveData();
+            updateChart();
+        }
+
+        function updateChart() {
+            const refinedSet = [];
+            let count = 0;
+            for (let x = 1; x <= totalX; x++) {
+                const res = calculateRefined(x);
+                refinedSet.push(res);
+                if (res.min !== null) count++;
+            }
+
+            document.getElementById('stat-count').innerText = `${count} / ${totalX}`;
+            const statusLabel = document.getElementById('stat-analysis-status');
+            if (count > 0) {
+                statusLabel.innerText = "Analyzing";
+                statusLabel.className = "text-lg font-bold text-blue-600";
+            } else {
+                statusLabel.innerText = "Standby";
+                statusLabel.className = "text-lg font-bold text-slate-800";
+            }
+
+            const trend = Array.from({length: totalX}, (_, i) => {
+                const x = i + 1;
+                return 0.0038 * Math.pow(x, 3) - 0.27 * Math.pow(x, 2) + 9.4 * x - 4.5;
+            });
+
+            chart.data.datasets[0].data = refinedSet.map(p => p.max);
+            chart.data.datasets[1].data = refinedSet.map(p => p.min);
+            chart.data.datasets[2].data = trend;
+            chart.update('none');
+
+            const validPoints = refinedSet.filter(p => p.min !== null && p.max !== null);
+            if (validPoints.length > 0) {
+                const narrowest = validPoints.reduce((prev, curr) => (curr.max - curr.min < prev.max - prev.min) ? curr : prev);
+                document.getElementById('stat-narrowest').innerText = `X=${narrowest.x}`;
+            }
+            document.getElementById('stat-final-predict').innerText = Math.round(trend[35]);
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: { 
+                    labels: Array.from({length: 36}, (_, i) => (i + 1).toString().padStart(2, '0')), 
+                    datasets: [
+                        { label: 'MAX', data: [], borderColor: '#3b82f6', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2, spanGaps: true, tension: 0.3 },
+                        { label: 'MIN', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.08)', borderWidth: 2, pointRadius: 2, spanGaps: true, fill: '-1', tension: 0.3 },
+                        { label: 'Trend', data: [], borderColor: '#f43f5e', borderDash: [4, 4], pointRadius: 0, fill: false, tension: 0.4 }
+                    ] 
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { 
+                            grid: { color: '#f1f5f9' },
+                            ticks: { font: { size: 10 }, color: '#94a3b8' }
+                        },
+                        x: { 
+                            grid: { display: false },
+                            ticks: { font: { size: 10 }, color: '#94a3b8' }
+                        }
+                    }
+                }
+            });
+            updateChart();
+        }
+
+        window.onload = () => {
+            loadData();
+            initTable();
+            initChart();
+        };
+    </script>
+</body>
+</html>
